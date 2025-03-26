@@ -93,44 +93,35 @@ if api_key:
         ],
         api_key=api_key,
     )
+
+    splitter = CharacterTextSplitter.from_tiktoken_encoder(
+        separator="\n",
+        chunk_size=600,
+        chunk_overlap=100,
+    )
+
+    cache_dir = LocalFileStore("./.cache/")
+    loader = UnstructuredFileLoader("files/1984.txt")
+    docs = loader.load_and_split(text_splitter=splitter)
+    embeddings = OpenAIEmbeddings()
+    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir)
+    vectorstore = FAISS.from_documents(docs, cached_embeddings)
+    retriever = vectorstore.as_retriever()
+    send_message("I'm ready! Ask away!", "ai", save=False)
+    paint_history()
+    message = st.chat_input("Ask anything about your file...")
+    if message:
+        send_message(message, "human")
+        chain = (
+            {
+                "context": retriever | RunnableLambda(format_docs),
+                "question": RunnablePassthrough(),
+            }
+            | prompt
+            | llm
+        )
+        with st.chat_message("ai"):
+            chain.invoke(message)
 else:
-    llm = ChatOpenAI(
-        temperature=0.1,
-        streaming=True,
-        callbacks=[
-            ChatCallbackHandler(),
-        ],
-    )
-
-splitter = CharacterTextSplitter.from_tiktoken_encoder(
-    separator="\n",
-    chunk_size=600,
-    chunk_overlap=100,
-)
-
-cache_dir = LocalFileStore("./.cache/")
-loader = UnstructuredFileLoader("files/1984.txt")
-docs = loader.load_and_split(text_splitter=splitter)
-embeddings = OpenAIEmbeddings()
-cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir)
-vectorstore = FAISS.from_documents(docs, cached_embeddings)
-retriever = vectorstore.as_retriever()
-send_message("I'm ready! Ask away!", "ai", save=False)
-paint_history()
-message = st.chat_input("Ask anything about your file...")
-if message:
-    send_message(message, "human")
-    chain = (
-        {
-            "context": retriever | RunnableLambda(format_docs),
-            "question": RunnablePassthrough(),
-        }
-        | prompt
-        | llm
-    )
-    with st.chat_message("ai"):
-        chain.invoke(message)
-
-
-if "messages" not in st.session_state:
     st.session_state["messages"] = []
+    send_message("Please input the api key", "ai", save=False)
